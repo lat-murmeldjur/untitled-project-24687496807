@@ -42,9 +42,9 @@ async fn main() -> Result<()> {
         b256!("ef519b7eb82aaf6ac376a6df2d793843ebfd593de5f1a0601d3cc6ab49ebb395");
 
     let filter = Filter::new()
-        //.address(eth10_address)
-        .event_signature(transfer_event_signature2)
-        .from_block(20126208);
+        .address(eth10_address)
+        .event_signature(transfer_event_signature)
+        .from_block(19398107);
 
     let logs = provider.get_logs(&filter).await?;
 
@@ -60,7 +60,11 @@ async fn main() -> Result<()> {
             .await
             .unwrap();
 
-        println!("block {:#?}", h);
+        println!("blocktime {:#?}", h.clone().unwrap().header.timestamp);
+        println!(
+            "blocknumber {:#?}",
+            h.clone().unwrap().header.number.unwrap()
+        );
 
         println!("");
         println!("");
@@ -68,19 +72,25 @@ async fn main() -> Result<()> {
         println!("");
         println!("");
 
-        println!("root {:#?}", h.clone().unwrap().header.state_root);
+        let slot1 = 4700013 + (h.clone().unwrap().header.timestamp - 1663224179) / 12;
 
-        let str1: String =
-            (&h.clone().unwrap().header.parent_beacon_block_root.unwrap()).to_string();
+        let id = BlockId::Slot(slot1);
 
-        let root = Root::from_hex(str1).unwrap();
-        let id = BlockId::Root(root);
-
-        println!("root {:#?}", root);
         println!("id {:#?}", id);
 
         let block = client.get_beacon_block(id).await.unwrap();
-        println!("{:#?}", block.message().body().attestations());
+        println!(
+            "{:#?}",
+            block
+                .message()
+                .body()
+                .execution_payload()
+                .unwrap()
+                .capella()
+                .unwrap()
+                // .ExecutionPayload()
+                .block_number
+        );
     } else {
         for log in logs {
             println!("block number: {:?}", log.block_number.unwrap());
