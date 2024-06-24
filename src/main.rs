@@ -1,3 +1,7 @@
+use num::bigint::BigInt;
+use std::collections::HashMap;
+use std::str::FromStr;
+
 use alloy::{
     primitives::{address, b256},
     providers::{Provider, ProviderBuilder, WsConnect},
@@ -6,7 +10,7 @@ use alloy::{
     sol_types::SolEvent,
 };
 
-use beacon_api_client::{mainnet::Client, BlockId};
+use beacon_api_client::{mainnet::Client, BlockId, StateId};
 use ethereum_consensus::primitives::Root;
 use hex::FromHex;
 use url::Url;
@@ -21,11 +25,25 @@ sol!(
     "src/eth10.json"
 );
 
+#[derive(Debug)]
+struct boi {
+    block_number: u64,
+    hash: String,
+    timestamp: u64,
+    slot: u64,
+    fee_recipient: String,
+    fee_received: u128,
+    proposer_index: u64,
+    tx_from_fee_recipient_txhash: String,
+    tx_from_fee_recipient_value: BigInt,
+    tx_from_fee_recipient_recipient: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Set up the WS transport which is consumed by the RPC client.
-    // Set up the WS transport which is consumed by the RPC client.
-    let rc = "https://core.gashawk.io/rpc";
+    let blocks_of_interest: HashMap<boi, i32>;
+    // got limited let rc = "https://core.gashawk.io/rpc";
+    let rc = "https://eth.drpc.org";
     let brc = "https://ethereum-beacon-api.publicnode.com";
     // let brc = "https://lb.drpc.org/rest/eth-beacon-chain";
     let rpc_url = rc.parse()?;
@@ -51,46 +69,126 @@ async fn main() -> Result<()> {
     println!("logs len: {}", logs.len());
 
     if true {
-        println!("block number: {:?}", logs[0].block_number.unwrap());
+        let log = &logs[0];
         let h = provider
             .get_block_by_number(
-                logs[0].block_number.unwrap().into(),
-                false, //BlockTransactionsKind::Hashes,
+                log.block_number.unwrap().into(),
+                true, //BlockTransactionsKind::Hashes,
             )
             .await
             .unwrap();
 
-        println!("blocktime {:#?}", h.clone().unwrap().header.timestamp);
-        println!(
-            "blocknumber {:#?}",
-            h.clone().unwrap().header.number.unwrap()
-        );
+        println!("exbh : {:#?}", h.clone().unwrap().header);
 
-        println!("");
         println!("");
         println!("...");
         println!("");
-        println!("");
 
         let slot1 = 4700013 + (h.clone().unwrap().header.timestamp - 1663224179) / 12;
-
         let id = BlockId::Slot(slot1);
-
-        println!("id {:#?}", id);
-
+        let sid = StateId::Slot(slot1);
         let block = client.get_beacon_block(id).await.unwrap();
-        println!(
-            "{:#?}",
-            block
-                .message()
-                .body()
-                .execution_payload()
-                .unwrap()
-                .capella()
-                .unwrap()
-                // .ExecutionPayload()
-                .block_number
-        );
+
+        let proposer_index = block.message().proposer_index();
+
+        println!("Proposer index {:#?}", proposer_index);
+        println!("state {:#?}", sid);
+
+        let proposer_info = client
+            .get_validator(
+                StateId::Head,
+                beacon_api_client::PublicKeyOrIndex::Index(proposer_index),
+            )
+            .await
+            .unwrap();
+
+        println!("Proposer info {:#?}", proposer_info);
+
+        let proposer_hash = "".to_string();
+
+        let e0 = h.clone().unwrap();
+        let e1 = e0.header.hash.unwrap();
+        let execution_block_hash_as_bytes = format!("{:#?}", e1);
+
+        let f0 = block.message();
+        let f1 = f0.body();
+        let f2 = f1.execution_payload();
+        let f3 = f2.unwrap();
+        let f4 = f3.capella();
+        let f5 = &f4.unwrap().block_hash;
+        let consensus_payload_hash_as_bytes = format!("{:#?}", f5);
+
+        if (consensus_payload_hash_as_bytes != execution_block_hash_as_bytes) {
+            panic!("block hash mismatch from beacon query payload and execution query");
+        }
+
+        println!("{}", execution_block_hash_as_bytes);
+        println!("{}", consensus_payload_hash_as_bytes);
+
+        let b_block_number = h.clone().unwrap().header.number.unwrap();
+        let b_hash = consensus_payload_hash_as_bytes;
+        let b_timestamp = h.clone().unwrap().header.timestamp;
+        let b_slot = block.message().slot();
+        let b_fee_recipient = h.clone().unwrap().header.miner.to_string();
+        let b_proposer_index = proposer_index as u64;
+        let mut b_tx_from_fee_recipient_txhash = "".to_string();
+        let mut b_tx_from_fee_recipient_value = "0".parse::<BigInt>().unwrap();
+        let mut b_tx_from_fee_recipient_recipient = "".to_string();
+
+        let txs0 = h.clone().unwrap();
+        let base_fee = txs0.header.base_fee_per_gas.unwrap();
+        let txs1 = txs0.transactions.as_transactions().unwrap();
+        let mut b_fee_received = 0;
+
+        println!("{:#?}", txs1[0]);
+
+        let mut first = true;
+        for a in txs1 {
+            if a.from.to_string() == b_fee_recipient {
+                if first == false {
+                    panic!("multiple txs from fee recipient");
+                }
+
+                b_tx_from_fee_recipient_txhash = a.hash.to_string();
+                b_tx_from_fee_recipient_value = a.value.to_string().parse::<BigInt>().unwrap();
+                b_tx_from_fee_recipient_recipient = a.to.unwrap().to_string();
+
+                println!("{:#?}", a.to.unwrap());
+
+                first = false;
+            }
+        }
+
+        let txs2 = provider
+            .get_block_receipts(BlockNumberOrTag::Number(b_block_number))
+            .await
+            .unwrap();
+
+        for b in &txs2 {
+            for a in b {
+                let price = a.effective_gas_price;
+                let diff = price - base_fee;
+                let multiplied_diff = diff * a.gas_used;
+                b_fee_received += multiplied_diff;
+            }
+        }
+
+        let boi0 = boi {
+            block_number: b_block_number,
+            hash: b_hash,
+            timestamp: b_timestamp,
+            slot: b_slot,
+            fee_recipient: b_fee_recipient,
+            fee_received: b_fee_received,
+            proposer_index: b_proposer_index,
+            tx_from_fee_recipient_txhash: b_tx_from_fee_recipient_txhash,
+            tx_from_fee_recipient_value: b_tx_from_fee_recipient_value,
+            tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
+        };
+
+        println!("{:#?}", boi0);
+
+        // println!("{:#?}", txs2);
     } else {
         for log in logs {
             println!("block number: {:?}", log.block_number.unwrap());
