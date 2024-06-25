@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         .address(eth10_address)
         .event_signature(transfer_event_signature)
         .from_block(15537394)
-        .to_block(15537594);
+        .to_block(15539594);
 
     let logs = provider.get_logs(&filter).await?;
 
