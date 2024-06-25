@@ -1,5 +1,7 @@
+use csv::Writer;
 use num::bigint::BigInt;
 use std::collections::HashMap;
+use std::error::Error;
 use std::str::FromStr;
 
 use alloy::{
@@ -25,7 +27,7 @@ sol!(
     "src/eth10.json"
 );
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 struct boi {
     block_number: u64,
     hash: String,
@@ -35,17 +37,21 @@ struct boi {
     fee_received: u128,
     proposer_index: u64,
     tx_from_fee_recipient_txhash: String,
-    tx_from_fee_recipient_value: BigInt,
+    tx_from_fee_recipient_value: String,
     tx_from_fee_recipient_recipient: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let blocks_of_interest: HashMap<boi, i32>;
+    let mut blocks_of_interest = vec![];
     // got limited let rc = "https://core.gashawk.io/rpc";
     let rc = "https://eth.drpc.org";
-    let brc = "https://ethereum-beacon-api.publicnode.com";
-    // let brc = "https://lb.drpc.org/rest/eth-beacon-chain";
+
+    // let brc = "https://ethereum-beacon-api.publicnode.com";
+
+    let brc = "https://lodestar-mainnet.chainsafe.io";
+    // "https://svc.blockdaemon.com/ethereum/mainnet/native/eth/v1/beacon";
+
     let rpc_url = rc.parse()?;
     let provider = ProviderBuilder::new().on_http(rpc_url);
 
@@ -62,14 +68,18 @@ async fn main() -> Result<()> {
     let filter = Filter::new()
         .address(eth10_address)
         .event_signature(transfer_event_signature)
-        .from_block(19398107);
+        .from_block(15537394)
+        .to_block(15537594);
 
     let logs = provider.get_logs(&filter).await?;
 
     println!("logs len: {}", logs.len());
-
-    if true {
-        let log = &logs[0];
+    let mut ii = 0;
+    for log in logs {
+        ii += 1;
+        if ii > 5 {
+            break;
+        }
         let h = provider
             .get_block_by_number(
                 log.block_number.unwrap().into(),
@@ -87,6 +97,9 @@ async fn main() -> Result<()> {
         let slot1 = 4700013 + (h.clone().unwrap().header.timestamp - 1663224179) / 12;
         let id = BlockId::Slot(slot1);
         let sid = StateId::Slot(slot1);
+
+        println!("slot: {}", id);
+
         let block = client.get_beacon_block(id).await.unwrap();
 
         let proposer_index = block.message().proposer_index();
@@ -114,9 +127,22 @@ async fn main() -> Result<()> {
         let f1 = f0.body();
         let f2 = f1.execution_payload();
         let f3 = f2.unwrap();
-        let f4 = f3.capella();
-        let f5 = &f4.unwrap().block_hash;
-        let consensus_payload_hash_as_bytes = format!("{:#?}", f5);
+        let mut consensus_payload_hash_as_bytes;
+
+        println!("xx: {:#?}", f3);
+        if slot1 < 6209536 {
+            let f4 = f3.bellatrix();
+            let f5 = &f4.unwrap().block_hash;
+            consensus_payload_hash_as_bytes = format!("{:#?}", f5);
+        } else if slot1 < 8626176 {
+            let f4 = f3.capella();
+            let f5 = &f4.unwrap().block_hash;
+            consensus_payload_hash_as_bytes = format!("{:#?}", f5);
+        } else {
+            let f4 = f3.deneb();
+            let f5 = &f4.unwrap().block_hash;
+            consensus_payload_hash_as_bytes = format!("{:#?}", f5);
+        }
 
         if (consensus_payload_hash_as_bytes != execution_block_hash_as_bytes) {
             panic!("block hash mismatch from beacon query payload and execution query");
@@ -132,7 +158,7 @@ async fn main() -> Result<()> {
         let b_fee_recipient = h.clone().unwrap().header.miner.to_string();
         let b_proposer_index = proposer_index as u64;
         let mut b_tx_from_fee_recipient_txhash = "".to_string();
-        let mut b_tx_from_fee_recipient_value = "0".parse::<BigInt>().unwrap();
+        let mut b_tx_from_fee_recipient_value = "0".to_string();
         let mut b_tx_from_fee_recipient_recipient = "".to_string();
 
         let txs0 = h.clone().unwrap();
@@ -150,7 +176,7 @@ async fn main() -> Result<()> {
                 }
 
                 b_tx_from_fee_recipient_txhash = a.hash.to_string();
-                b_tx_from_fee_recipient_value = a.value.to_string().parse::<BigInt>().unwrap();
+                b_tx_from_fee_recipient_value = a.value.to_string();
                 b_tx_from_fee_recipient_recipient = a.to.unwrap().to_string();
 
                 println!("{:#?}", a.to.unwrap());
@@ -188,16 +214,13 @@ async fn main() -> Result<()> {
 
         println!("{:#?}", boi0);
 
-        // println!("{:#?}", txs2);
-    } else {
-        for log in logs {
-            println!("block number: {:?}", log.block_number.unwrap());
-            let h = provider.get_block_by_number(
-                log.block_number.unwrap().into(),
-                false, // BlockTransactionsKind::Full,
-            );
-            println!("block {:#?}", h.await);
-        }
+        blocks_of_interest.push(boi0);
+    }
+
+    let mut wtr = Writer::from_path("foo.csv")?;
+
+    for a in blocks_of_interest {
+        wtr.serialize(a)?;
     }
 
     // let root = Root::from_hex(root_hex).unwrap();
