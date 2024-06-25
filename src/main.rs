@@ -3,9 +3,11 @@ use num::bigint::BigInt;
 use std::collections::HashMap;
 use std::error::Error;
 use std::str::FromStr;
+extern crate chrono;
+use chrono::Local;
 
 use alloy::{
-    primitives::{address, b256},
+    primitives::{address, b256, Address},
     providers::{Provider, ProviderBuilder, WsConnect},
     rpc::types::{BlockNumberOrTag, BlockTransactionsKind, Filter},
     sol,
@@ -58,8 +60,11 @@ async fn main() -> Result<()> {
     let url = Url::parse(brc).unwrap();
     let client = Client::new(url);
 
+    let debug = false;
+
+    let address_of_interest = "0x910Cbd523D972eb0a6f4cAe4618aD62622b39DbF";
     // Create a filter to watch for UNI token transfers.
-    let eth10_address = address!("910Cbd523D972eb0a6f4cAe4618aD62622b39DbF");
+    let eth10_address = Address::parse_checksummed(address_of_interest, None).unwrap();
     let transfer_event_signature =
         b256!("e9e508bad6d4c3227e881ca19068f099da81b5164dd6d62b2eaf1e8bc6c34931");
     let transfer_event_signature2 =
@@ -68,17 +73,22 @@ async fn main() -> Result<()> {
     let filter = Filter::new()
         .address(eth10_address)
         .event_signature(transfer_event_signature)
-        .from_block(15537394)
-        .to_block(15539594);
+        .from_block(15537394); //.to_block(15539394);
+                               // .to_block(17034869);
 
     let logs = provider.get_logs(&filter).await?;
 
-    println!("logs len: {}", logs.len());
+    let ll = logs.len();
+    println!("logs len: {}", ll);
     let mut ii = 0;
     for log in logs {
         ii += 1;
-        if ii > 5 {
-            break;
+        println!("Current {} / {}", ii, ll);
+
+        if debug {
+            if ii > 5 {
+                break;
+            }
         }
         let h = provider
             .get_block_by_number(
@@ -88,34 +98,41 @@ async fn main() -> Result<()> {
             .await
             .unwrap();
 
-        println!("exbh : {:#?}", h.clone().unwrap().header);
+        if debug {
+            println!("exbh : {:#?}", h.clone().unwrap().header);
 
-        println!("");
-        println!("...");
-        println!("");
-
+            println!("");
+            println!("...");
+            println!("");
+        }
         let slot1 = 4700013 + (h.clone().unwrap().header.timestamp - 1663224179) / 12;
         let id = BlockId::Slot(slot1);
         let sid = StateId::Slot(slot1);
 
-        println!("slot: {}", id);
+        if debug {
+            println!("slot: {}", id);
+        }
 
         let block = client.get_beacon_block(id).await.unwrap();
 
         let proposer_index = block.message().proposer_index();
 
-        println!("Proposer index {:#?}", proposer_index);
-        println!("state {:#?}", sid);
+        if debug {
+            println!("Proposer index {:#?}", proposer_index);
+            println!("state {:#?}", sid);
+        }
 
-        let proposer_info = client
-            .get_validator(
-                StateId::Head,
-                beacon_api_client::PublicKeyOrIndex::Index(proposer_index),
-            )
-            .await
-            .unwrap();
+        if debug {
+            let proposer_info = client
+                .get_validator(
+                    StateId::Head,
+                    beacon_api_client::PublicKeyOrIndex::Index(proposer_index),
+                )
+                .await
+                .unwrap();
 
-        println!("Proposer info {:#?}", proposer_info);
+            println!("Proposer info {:#?}", proposer_info);
+        }
 
         let proposer_hash = "".to_string();
 
@@ -129,7 +146,10 @@ async fn main() -> Result<()> {
         let f3 = f2.unwrap();
         let mut consensus_payload_hash_as_bytes;
 
-        println!("xx: {:#?}", f3);
+        if debug {
+            println!("f3: {:#?}", f3);
+        }
+
         if slot1 < 6209536 {
             let f4 = f3.bellatrix();
             let f5 = &f4.unwrap().block_hash;
@@ -148,8 +168,10 @@ async fn main() -> Result<()> {
             panic!("block hash mismatch from beacon query payload and execution query");
         }
 
-        println!("{}", execution_block_hash_as_bytes);
-        println!("{}", consensus_payload_hash_as_bytes);
+        if debug {
+            println!("{}", execution_block_hash_as_bytes);
+            println!("{}", consensus_payload_hash_as_bytes);
+        }
 
         let b_block_number = h.clone().unwrap().header.number.unwrap();
         let b_hash = consensus_payload_hash_as_bytes;
@@ -166,23 +188,8 @@ async fn main() -> Result<()> {
         let txs1 = txs0.transactions.as_transactions().unwrap();
         let mut b_fee_received = 0;
 
-        println!("{:#?}", txs1[0]);
-
-        let mut first = true;
-        for a in txs1 {
-            if a.from.to_string() == b_fee_recipient {
-                if first == false {
-                    panic!("multiple txs from fee recipient");
-                }
-
-                b_tx_from_fee_recipient_txhash = a.hash.to_string();
-                b_tx_from_fee_recipient_value = a.value.to_string();
-                b_tx_from_fee_recipient_recipient = a.to.unwrap().to_string();
-
-                println!("{:#?}", a.to.unwrap());
-
-                first = false;
-            }
+        if debug {
+            println!("{:#?}", txs1[0]);
         }
 
         let txs2 = provider
@@ -199,6 +206,38 @@ async fn main() -> Result<()> {
             }
         }
 
+        let mut first = true;
+        for a in txs1 {
+            if a.from.to_string() == b_fee_recipient {
+                if first == false {
+                    let boi = boi {
+                        block_number: b_block_number,
+                        hash: b_hash.clone(),
+                        timestamp: b_timestamp,
+                        slot: b_slot,
+                        fee_recipient: b_fee_recipient.clone(),
+                        fee_received: b_fee_received,
+                        proposer_index: b_proposer_index,
+                        tx_from_fee_recipient_txhash: b_tx_from_fee_recipient_txhash,
+                        tx_from_fee_recipient_value: b_tx_from_fee_recipient_value,
+                        tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
+                    };
+
+                    blocks_of_interest.push(boi);
+
+                    println!("multiple txs from fee recipient");
+                }
+
+                b_tx_from_fee_recipient_txhash = a.hash.to_string();
+                b_tx_from_fee_recipient_value = a.value.to_string();
+                b_tx_from_fee_recipient_recipient = a.to.unwrap().to_string();
+
+                println!("{:#?}", a.to.unwrap());
+
+                first = false;
+            }
+        }
+
         let boi0 = boi {
             block_number: b_block_number,
             hash: b_hash,
@@ -212,12 +251,21 @@ async fn main() -> Result<()> {
             tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
         };
 
-        println!("{:#?}", boi0);
+        if debug {
+            println!("{:#?}", boi0);
+        }
 
         blocks_of_interest.push(boi0);
     }
 
-    let mut wtr = Writer::from_path("foo.csv")?;
+    let date = Local::now();
+    let dtstr = format!(
+        "{}-{}.csv",
+        date.format("%Y%m%d%H%M%S"),
+        address_of_interest
+    );
+
+    let mut wtr = Writer::from_path(dtstr)?;
 
     for a in blocks_of_interest {
         wtr.serialize(a)?;
