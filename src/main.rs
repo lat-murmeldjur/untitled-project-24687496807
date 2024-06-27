@@ -41,6 +41,7 @@ struct boi {
     tx_from_fee_recipient_txhash: String,
     tx_from_fee_recipient_value: String,
     tx_from_fee_recipient_recipient: String,
+    notes: String,
 }
 
 #[tokio::main]
@@ -72,7 +73,7 @@ async fn main() -> Result<()> {
 
     let filter = Filter::new()
         .address(eth10_address)
-        .event_signature(transfer_event_signature)
+        // .event_signature(transfer_event_signature)
         .from_block(15537394); //.to_block(15539394);
                                // .to_block(17034869);
 
@@ -182,6 +183,7 @@ async fn main() -> Result<()> {
         let mut b_tx_from_fee_recipient_txhash = "".to_string();
         let mut b_tx_from_fee_recipient_value = "0".to_string();
         let mut b_tx_from_fee_recipient_recipient = "".to_string();
+        let mut b_notes = "".to_string();
 
         let txs0 = h.clone().unwrap();
         let base_fee = txs0.header.base_fee_per_gas.unwrap();
@@ -210,6 +212,7 @@ async fn main() -> Result<()> {
         for a in txs1 {
             if a.from.to_string() == b_fee_recipient {
                 if first == false {
+                    b_notes = "Multiple txs from execution block fee recipient".to_string();
                     let boi = boi {
                         block_number: b_block_number,
                         hash: b_hash.clone(),
@@ -221,6 +224,7 @@ async fn main() -> Result<()> {
                         tx_from_fee_recipient_txhash: b_tx_from_fee_recipient_txhash,
                         tx_from_fee_recipient_value: b_tx_from_fee_recipient_value,
                         tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
+                        notes: b_notes,
                     };
 
                     blocks_of_interest.push(boi);
