@@ -63,7 +63,8 @@ async fn main() -> Result<()> {
 
     let debug = false;
 
-    let address_of_interest = "0x910Cbd523D972eb0a6f4cAe4618aD62622b39DbF";
+    // let 10eth_address_of_interest = "0x910Cbd523D972eb0a6f4cAe4618aD62622b39DbF";
+    let address_of_interest = "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936#internaltx";
     // Create a filter to watch for UNI token transfers.
     let eth10_address = Address::parse_checksummed(address_of_interest, None).unwrap();
     let transfer_event_signature =
@@ -224,7 +225,7 @@ async fn main() -> Result<()> {
                         tx_from_fee_recipient_txhash: b_tx_from_fee_recipient_txhash,
                         tx_from_fee_recipient_value: b_tx_from_fee_recipient_value,
                         tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
-                        notes: b_notes,
+                        notes: b_notes.clone(),
                     };
 
                     blocks_of_interest.push(boi);
@@ -253,6 +254,7 @@ async fn main() -> Result<()> {
             tx_from_fee_recipient_txhash: b_tx_from_fee_recipient_txhash,
             tx_from_fee_recipient_value: b_tx_from_fee_recipient_value,
             tx_from_fee_recipient_recipient: b_tx_from_fee_recipient_recipient,
+            notes: b_notes.clone(),
         };
 
         if debug {
